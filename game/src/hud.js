@@ -72,7 +72,14 @@ export function updateHud(dt) {
     lastPhase = S.phase;
   }
   el.buymenu.style.display = buyOpen && S.phase === PHASE.BUY ? 'block' : 'none';
-  el.scoreboard.style.display = (S.phase === PHASE.MATCH_END || input.scorePressed) ? 'block' : 'none';
+  const matchEnd = S.phase === PHASE.MATCH_END;
+  el.scoreboard.style.display = (matchEnd || input.scorePressed) ? 'block' : 'none';
+  // at match end the win banner and the scoreboard share the screen: the
+  // banner rides higher, the panel lower, and the objective line (which
+  // only repeats the banner's sub-line there) steps aside
+  el.scoreboard.style.top = matchEnd ? '60%' : '';
+  el.banner.style.top = matchEnd ? '15%' : '';
+  el.objective.style.display = matchEnd ? 'none' : '';
 
   // top centre: scores, timer, round
   el['score-line'].innerHTML =

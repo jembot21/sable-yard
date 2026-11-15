@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { S, PHASE, TEAM, mulberry32 } from './state.js';
-import { buildWorld } from './world.js';
+import { buildWorld, yawOf } from './world.js';
 import { initEffects, updateEffects, shakeValue, spawnSmokeFx } from './effects.js';
 import { buildSoldier, updateSoldier, buildViewmodels } from './models.js';
 import { bindInput, input } from './input.js';
@@ -28,13 +28,13 @@ if (shot) {
 }
 
 const canvasHost = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!shot });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.28;
+renderer.toneMappingExposure = 1.35;
 canvasHost.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -42,7 +42,7 @@ const camera = new THREE.PerspectiveCamera(78, window.innerWidth / window.innerH
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 
-buildWorld(scene);
+buildWorld(scene, { shadowSize: shot ? 1024 : 2048 });
 initEffects(scene);
 const viewmodels = buildViewmodels();
 camera.add(viewmodels.group);
@@ -113,20 +113,39 @@ function stageShot() {
     S.banner = null;
     for (const c of S.combatants) { c.money = 6000; buyItem(c, 'ar57'); buyItem(c, 'armorHelmet'); c.money = 2140; }
     // a firefight in the warehouse: the player and two Wardens hold the east
-    // door while three Jackals push the west door through smoke
-    place(p, 9.5, 2.2, Math.PI / 2 + 0.12);
+    // door while three Jackals push in from the west, each pair duelling
+    place(p, 11.8, 3.4, Math.PI / 2 + 0.18);
     input.yaw = p.yaw; input.pitch = -0.01;
     const mates = S.combatants.filter((c) => c.team === TEAM.WARDENS && !c.isPlayer);
-    place(mates[0], 7.5, -3.4, Math.PI / 2);
-    place(mates[1], 11.5, 5.2, Math.PI / 2 - 0.3);
+    place(mates[0], 8.5, -3.6, Math.PI / 2);
+    place(mates[1], 12.6, 6.2, Math.PI / 2 - 0.35);
     const foes = S.combatants.filter((c) => c.team === TEAM.JACKALS);
-    place(foes[0], -3.5, -1.2, -Math.PI / 2);
-    place(foes[1], -5.5, 2.4, -Math.PI / 2);
-    place(foes[2], -1.5, 4.6, -Math.PI / 2);
+    place(foes[0], -1.5, -1, -Math.PI / 2);
+    place(foes[1], -3.5, 2.6, -Math.PI / 2);
+    place(foes[2], 0.5, 4.6, -Math.PI / 2);
     place(foes[3], -14, -14, -Math.PI / 2);
     place(foes[4], 2, 14, Math.PI);
-    for (const f of foes.slice(0, 3)) { f.brain.enemy = p; f.brain.spotReadyT = 0; }
-    for (const m of mates) { m.brain.enemy = foes[0]; m.brain.spotReadyT = 0; }
+    foes[0].brain.enemy = p; foes[0].brain.spotReadyT = 0.55;
+    foes[0].brain.skill.aimErr = 0.055;
+    foes[1].brain.enemy = mates[0]; foes[1].brain.spotReadyT = 0;
+    foes[2].brain.enemy = mates[1]; foes[2].brain.spotReadyT = 0;
+    mates[0].brain.enemy = foes[1]; mates[0].brain.spotReadyT = 0;
+    mates[1].brain.enemy = foes[2]; mates[1].brain.spotReadyT = 0;
+    // aim every staged fighter at their opposite number
+    const aimAt = (c, t) => { c.yaw = yawOf(t.pos.x - c.pos.x, t.pos.z - c.pos.z); };
+    aimAt(p, foes[0]);
+    aimAt(foes[0], p);
+    aimAt(mates[0], foes[1]);
+    aimAt(foes[1], mates[0]);
+    aimAt(mates[1], foes[2]);
+    aimAt(foes[2], mates[1]);
+    input.yaw = p.yaw;
+    // the staged foes are a beat slow and a touch wild — the still is taken
+    // mid-duel, and a stationary protagonist has to live long enough for it
+    for (const f of foes) {
+      f.brain.skill.aimErr = Math.max(f.brain.skill.aimErr, 0.055);
+      f.brain.spotReadyT = Math.max(f.brain.spotReadyT, 0.45);
+    }
     // everyone else holds the spot they were placed on
     for (const c of S.combatants) {
       if (c.isPlayer) continue;
@@ -138,8 +157,27 @@ function stageShot() {
     if (S.charge.carrier) S.charge.carrier.chargeCarrying = false;
     S.charge.carrier = foes[0];
     foes[0].chargeCarrying = true;
-    S.smokes.push({ x: -6.5, z: 0.4, r: 3.1, t: 2, life: 15 });
-    spawnSmokeFx(-6.5, 0.4);
+    S.smokes.push({ x: -7.5, z: -5.2, r: 3.1, t: 2, life: 15 });
+    spawnSmokeFx(-7.5, -5.2);
+    // run the fight forward a little, so whenever the frame is taken the
+    // duel is already joined: bursts, a kill or two, a feed
+    for (let i = 0; i < 100; i++) {
+      input.firing = (i > 30 && i < 70) || (i > 78 && i < 99);
+      step(1 / 60);
+    }
+    input.firing = false;
+    if (!p.alive) {
+      // the still needs a living protagonist: rewind his part of the duel
+      // (his death comes out of the feed; the other kills stand)
+      p.alive = true;
+      p.hp = 90;
+      p.deaths = Math.max(0, p.deaths - 1);
+      for (let i = S.feed.length - 1; i >= 0; i--) {
+        if (S.feed[i].text.includes('▸  YOU')) S.feed.splice(i, 1);
+      }
+      place(p, 11.8, 3.4, yawOf(foes[0].pos.x - 11.8, foes[0].pos.z - 3.4));
+      input.yaw = p.yaw;
+    }
   }
   if (shot === 'end') {
     S.score.wardens = 7;
@@ -192,7 +230,7 @@ function frame() {
   shotT += dt;
   if (shot === 'play') {
     // the staged player returns fire in bursts
-    input.firing = shotT > 0.7 && shotT < 1.5 || shotT > 2.3 && shotT < 3.1;
+    input.firing = (shotT > 0.6 && shotT < 1.4) || (shotT > 2.1 && shotT < 2.9);
   }
 
   updateEffects(dt);
@@ -209,6 +247,13 @@ function frame() {
   wasBuy = isBuy;
 
   updateHud(dt);
+  if (camOverride) {
+    camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
+    camera.lookAt(camOverride[3], camOverride[4], camOverride[5]);
+    viewmodels.group.visible = false;
+    document.getElementById('hud').style.display = 'none';
+    document.getElementById('menu').style.display = 'none';
+  }
   renderer.render(scene, camera);
 }
 
@@ -258,12 +303,13 @@ function updateViewmodel(dt) {
   }
   if (!def) return;
   const gun = viewmodels.byDef[p.slots[p.current].def];
+  gun.scale.setScalar(0.88);
   vmBob += dt * (2 + p.moveSpeed * 1.7);
   const bobY = Math.sin(vmBob * 2) * 0.011 * Math.min(1, p.moveSpeed / 4);
   const bobX = Math.cos(vmBob) * 0.008 * Math.min(1, p.moveSpeed / 4);
   const scoped = isScoped(p);
-  gun.position.x += ((scoped ? 0 : 0.21) + bobX - gun.position.x) * Math.min(1, dt * 14);
-  gun.position.y += ((scoped ? -0.145 : -0.21) + bobY - gun.position.y) * Math.min(1, dt * 14);
+  gun.position.x += ((scoped ? 0 : 0.235) + bobX - gun.position.x) * Math.min(1, dt * 14);
+  gun.position.y += ((scoped ? -0.145 : -0.235) + bobY - gun.position.y) * Math.min(1, dt * 14);
   gun.position.z = -0.42 + (p.recoilPitch || 0) * 0.55;
   let dip = 0;
   if (p.reloadT > 0) dip = Math.sin((1 - p.reloadT / def.reload) * Math.PI) * 0.55;
@@ -276,5 +322,9 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// &cam=x,y,z,tx,ty,tz pins the camera (a look-around debug aid for shots)
+const camParam = params.get('cam');
+const camOverride = camParam ? camParam.split(',').map(Number) : null;
 
 frame();

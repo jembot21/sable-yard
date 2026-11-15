@@ -208,9 +208,10 @@ function floodlight(cx, cz, warm = true) {
   WORLD.colliders.push({ minX: cx - 0.14, maxX: cx + 0.14, minZ: cz - 0.14, maxZ: cz + 0.14, h: 7.4 });
 }
 
-export function buildWorld(theScene) {
+export function buildWorld(theScene, opts = {}) {
   scene = theScene;
   const m = materials();
+  const shadowSize = opts.shadowSize || 2048;
 
   // sky, fog and light: a low warm sun from the west, cool sky fill
   const sky = new THREE.Mesh(
@@ -222,13 +223,13 @@ export function buildWorld(theScene) {
   const sun = new THREE.DirectionalLight(PAL.sun, 3.1);
   sun.position.set(-60, 34, -28);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.left = -55; sun.shadow.camera.right = 55;
   sun.shadow.camera.top = 55; sun.shadow.camera.bottom = -55;
   sun.shadow.camera.far = 180;
   sun.shadow.bias = -0.0006;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.2));
+  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.35));
   // a cool fill from the east, so shadow sides keep their shapes
   const fill = new THREE.DirectionalLight(0x9db8d6, 0.55);
   fill.position.set(50, 26, 30);
@@ -283,9 +284,12 @@ function buildWarehouse(m) {
   // glowing strip lights under the roof
   const lampMat = new THREE.MeshStandardMaterial({ color: 0x444033, emissive: 0xffd9a0, emissiveIntensity: 1.8 });
   for (const lx of [-4, 2, 8]) visual(lx, 4.6, 0, 2.6, 0.12, 0.5, lampMat);
-  const inLight = new THREE.PointLight(0xffd9a0, 50, 24, 1.7);
+  const inLight = new THREE.PointLight(0xffd9a0, 120, 27, 1.6);
   inLight.position.set(2, 4.2, 0);
   scene.add(inLight);
+  const inLight2 = new THREE.PointLight(0xffd9a0, 70, 20, 1.6);
+  inLight2.position.set(-5, 4.2, 2);
+  scene.add(inLight2);
   // interior cover: crate clusters and a forklift-shaped stack of boxes
   crate(-3, -4, 2); crate(-1.8, -4, 1); crate(5.5, 3.5, 2); crate(5.5, 5, 1);
   crate(8, -4.5, 1); crate(-5, 5.5, 1);
