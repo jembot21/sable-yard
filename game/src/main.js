@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { S, PHASE, TEAM, mulberry32 } from './state.js';
-import { buildWorld, yawOf } from './world.js';
+import { buildWorld, yawOf, dirFromAngles, rayHitDistance } from './world.js';
 import { initEffects, updateEffects, shakeValue, spawnSmokeFx } from './effects.js';
 import { buildSoldier, updateSoldier, buildViewmodels } from './models.js';
 import { bindInput, input } from './input.js';
@@ -107,6 +107,12 @@ function stageShot() {
   ensureMeshes();
   const p = S.player;
   if (shot === 'play') {
+    // &nades=1 arms every bot with a frag and a flash (a soak-test hook:
+    // round-one money rarely buys grenades, so without it the staged
+    // duel never exercises a bot throw)
+    if (params.get('nades')) {
+      for (const c of S.combatants) if (!c.isPlayer) { c.grenades.frag = 1; c.grenades.flash = 1; }
+    }
     S.phase = PHASE.LIVE;
     S.phaseT = 63;
     S.targetSite = 'B';
@@ -179,6 +185,15 @@ function stageShot() {
       input.yaw = p.yaw;
     }
   }
+  if (shot === 'buy') {
+    // the buy phase with the menu open: a funded player mid-shop at spawn,
+    // armour and a rifle already in the bag, money still on the table
+    p.money = 8000;
+    buyItem(p, 'armorHelmet');
+    buyItem(p, 'ar57');
+    input.yaw = p.yaw;
+    input.pitch = 0.01;
+  }
   if (shot === 'end') {
     S.score.wardens = 7;
     S.score.jackals = 4;
@@ -207,6 +222,7 @@ const STEP = 1 / 60;
 let last = performance.now() / 1000;
 let accumulator = 0;
 const _eye = new THREE.Vector3();
+const _back = new THREE.Vector3();
 let deathT = 0;
 let vmBob = 0;
 let wasBuy = false;
@@ -278,7 +294,18 @@ function poseCamera(dt) {
     deathT = 0;
   }
   playerEye(subject, _eye);
-  if (subject !== p) { _eye.y = subject.pos.y + 1.6; }
+  if (subject !== p) {
+    _eye.y = subject.pos.y + 1.6;
+    // spectating sits a step behind the teammate's shoulder, pulled back
+    // only as far as the geometry allows: at his very eye the camera ends
+    // up inside any crate or wall he happens to be hugging
+    dirFromAngles(subject.yaw, 0, _back);
+    const room = rayHitDistance(_eye.x, _eye.y, _eye.z, -_back.x, 0, -_back.z, 1.15);
+    const pull = room === Infinity ? 1.15 : Math.max(0, room - 0.25);
+    _eye.x -= _back.x * pull;
+    _eye.z -= _back.z * pull;
+    _eye.y += 0.18 * (pull / 1.15);
+  }
   if (!p.alive) _eye.y = Math.max(0.5, _eye.y - Math.min(0.9, deathT * 1.4));
   camera.position.copy(_eye);
   const shake = shakeValue();
@@ -303,14 +330,14 @@ function updateViewmodel(dt) {
   }
   if (!def) return;
   const gun = viewmodels.byDef[p.slots[p.current].def];
-  gun.scale.setScalar(0.88);
+  gun.scale.setScalar(0.8);
   vmBob += dt * (2 + p.moveSpeed * 1.7);
   const bobY = Math.sin(vmBob * 2) * 0.011 * Math.min(1, p.moveSpeed / 4);
   const bobX = Math.cos(vmBob) * 0.008 * Math.min(1, p.moveSpeed / 4);
   const scoped = isScoped(p);
   gun.position.x += ((scoped ? 0 : 0.235) + bobX - gun.position.x) * Math.min(1, dt * 14);
   gun.position.y += ((scoped ? -0.145 : -0.235) + bobY - gun.position.y) * Math.min(1, dt * 14);
-  gun.position.z = -0.42 + (p.recoilPitch || 0) * 0.55;
+  gun.position.z = -0.47 + (p.recoilPitch || 0) * 0.55;
   let dip = 0;
   if (p.reloadT > 0) dip = Math.sin((1 - p.reloadT / def.reload) * Math.PI) * 0.55;
   if (p.switchT > 0) dip = Math.max(dip, Math.sin((p.switchT / 0.38) * Math.PI) * 0.4);

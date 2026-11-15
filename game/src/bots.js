@@ -50,6 +50,8 @@ export function makeBrain(c) {
     perceiveT: rng() * 0.1,
     burstLeft: 0,
     burstPauseT: 0,
+    nadeT: 0,              // next time this bot may throw a grenade
+    faceAwayT: 0,          // until when it looks away from its own flash
     strafeDir: 1,
     strafeT: 0,
     aimSettle: 0,
@@ -353,11 +355,61 @@ function maybeGrenade(c, dt, toward) {
   }
 }
 
+// --- grenades ---------------------------------------------------------------
+// Bots buy grenades in botBuy; this is where they spend them. A frag goes
+// at a seen enemy in the mid-range band when no teammate is standing near
+// the target (frags hurt everyone). A flash goes in early in a fight, and
+// the thrower looks away from his own pop, then pushes on it. A smoke goes
+// down between a hurt bot and its enemy as a screen to break off behind.
+function throwAt(c, kind, tx, tz, pitch) {
+  const keepYaw = c.yaw, keepPitch = c.pitch;
+  c.yaw = yawOf(tx - c.pos.x, tz - c.pos.z);
+  c.pitch = pitch;
+  const ok = throwGrenade(c, kind);
+  c.yaw = keepYaw; c.pitch = keepPitch;
+  if (ok) c.brain.nadeT = S.time + 8 + S.rng() * 6;
+  return ok;
+}
+
+function maybeThrowNade(c, e, dist) {
+  const b = c.brain;
+  if (S.time < b.nadeT || S.time < b.spotReadyT) return false;
+  const rng = S.rng;
+  const tx = e.pos.x, tz = e.pos.z;
+  if (c.grenades.smoke > 0 && c.hp <= 38 && dist > 5 && dist < 22) {
+    return throwAt(c, 'smoke', c.pos.x + (tx - c.pos.x) * 0.35, c.pos.z + (tz - c.pos.z) * 0.35, -0.55);
+  }
+  // frags and flashes fly an arc: if a wall eats the throw, keep them
+  const arcClear = !visionBlocked(c.pos.x, c.pos.y + 2.1, c.pos.z, tx, 1.6, tz);
+  if (!arcClear) return false;
+  if (c.grenades.frag > 0 && dist > 7 && dist < 19 && rng() < 0.5) {
+    let mateNear = false;
+    for (const m of S.combatants) {
+      if (m.alive && m.team === c.team && m !== c && Math.hypot(m.pos.x - tx, m.pos.z - tz) < 3.2) { mateNear = true; break; }
+    }
+    if (!mateNear) return throwAt(c, 'frag', tx, tz, 0.05 + dist * 0.008);
+  }
+  if (c.grenades.flash > 0 && dist > 9 && dist < 26 && b.aimSettle < 0.4 && rng() < 0.6) {
+    if (throwAt(c, 'flash', tx, tz, 0.05 + dist * 0.008)) {
+      b.faceAwayT = S.time + 0.95;
+      b.spotReadyT = Math.max(b.spotReadyT, S.time + 1.0);
+      return true;
+    }
+  }
+  return false;
+}
+
 function combat(c, dt) {
   const b = c.brain;
   const e = b.enemy;
   const dx = e.pos.x - c.pos.x, dz = e.pos.z - c.pos.z;
   const dist = Math.hypot(dx, dz);
+  // a bot that just threw a flash looks away until it pops, and holds fire
+  if (S.time < b.faceAwayT) {
+    faceToward(c, c.pos.x - dx, c.pos.z - dz, dt, 11);
+    c.wantFire = false;
+    return;
+  }
   b.aimSettle = Math.min(1, b.aimSettle + dt * 1.6);
 
   // aim at the chest, with an error that shrinks as the aim settles; a
@@ -398,6 +450,9 @@ function combat(c, dt) {
     c.vel.x = 0; c.vel.z = 0;
   }
   c.crouch = b.aimSettle > 0.6 && dist > 14 && c.id % 2 === 0;
+
+  // a grenade, when the moment fits, instead of the next burst
+  if (maybeThrowNade(c, e, dist)) { c.wantFire = false; return; }
 
   // fire control: bursts with pauses, only once the reaction time has run
   // and the line is clear this instant

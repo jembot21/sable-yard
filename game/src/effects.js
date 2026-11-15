@@ -66,7 +66,9 @@ export function initEffects(theScene) {
   sparkLife = new Float32Array(MAX_SPARKS);
   sgeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
   sgeo.setAttribute('color', new THREE.BufferAttribute(sparkCol, 3));
-  sparkPoints = new THREE.Points(sgeo, new THREE.PointsMaterial({ size: 0.09, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false }));
+  // the glow texture matters: unmapped points draw as hard squares, mapped
+  // ones as the soft round motes a spark should be
+  sparkPoints = new THREE.Points(sgeo, new THREE.PointsMaterial({ size: 0.075, map: glowTex, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false }));
   sparkPoints.frustumCulled = false;
   scene.add(sparkPoints);
 
