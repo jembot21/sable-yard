@@ -5,7 +5,7 @@
 // stop, crouch, fire in bursts — is the winning one, as the bounty asks.
 
 import * as THREE from 'three';
-import { S, otherTeam } from './state.js';
+import { S, otherTeam, radio, zoneName } from './state.js';
 import { WORLD, losBlocked, rayHitDistance, dirFromAngles } from './world.js';
 import * as fx from './effects.js';
 import * as audio from './audio.js';
@@ -134,6 +134,8 @@ function kill(victim, attacker, part) {
     S.charge.state = 'dropped';
     S.charge.carrier = null;
     S.charge.pos.set(victim.pos.x, 0, victim.pos.z);
+    const caller = S.combatants.find((x) => x.alive && !x.isPlayer && x.team === S.playerTeam);
+    if (caller) radio(caller, `Carrier down — charge dropped at ${zoneName(victim.pos.x, victim.pos.z)}`, true);
   }
 }
 

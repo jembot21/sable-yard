@@ -1,14 +1,15 @@
 // bots.js — the fighters who are not the player: perception, plans and
 // gunfights. A bot sees through a field-of-view and line-of-sight test on a
 // staggered tick, hears through the same noise events the player makes, and
-// remembers where an enemy was last seen. Teams play a plan each round: the
+// remembers where an enemy was last seen. First sightings are called out on
+// the team radio (state.js). Teams play a plan each round: the
 // Jackals send a carrier and escorts to the called site, the Wardens hold
 // angles on both sites and rotate on information. After the plant, the
 // Jackals hold the site and the Wardens retake it, one defusing, the rest
 // covering. Skill is per-bot: reaction time, aim error and burst discipline.
 
 import * as THREE from 'three';
-import { S, PHASE, TEAM, otherTeam } from './state.js';
+import { S, PHASE, TEAM, otherTeam, radio, zoneName } from './state.js';
 import { WORLD, groundAt, collideMove, dirFromAngles, yawOf } from './world.js';
 import { nextStepToward } from './nav.js';
 import { WEAPONS, buyItem, startReload, switchSlot, throwGrenade, visionBlocked, eyeHeight } from './weapons.js';
@@ -52,6 +53,7 @@ export function makeBrain(c) {
     burstPauseT: 0,
     nadeT: 0,              // next time this bot may throw a grenade
     faceAwayT: 0,          // until when it looks away from its own flash
+    radioT: 0,             // next time this bot may call a contact
     strafeDir: 1,
     strafeT: 0,
     aimSettle: 0,
@@ -155,6 +157,11 @@ function perceive(c, dt) {
       const behind = S.score[c.team] + 3 < S.score[otherTeam(c.team)] ? -0.06 : 0;
       b.spotReadyT = S.time + Math.max(0.16, b.skill.react + behind);
       b.aimSettle = 0;
+      // a first sighting gets called out on the team radio
+      if (S.time >= b.radioT) {
+        b.radioT = S.time + 18;
+        radio(c, `Contact — ${zoneName(best.pos.x, best.pos.z)}`);
+      }
     }
     b.lastSeen = { x: best.pos.x, z: best.pos.z };
     b.lastSeenT = S.time;

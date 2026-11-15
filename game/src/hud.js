@@ -139,11 +139,13 @@ export function updateHud(dt) {
   el.flashfx.style.opacity = String(Math.min(1, p.flashT * 0.95));
   el.scopefx.style.opacity = isScoped(p) ? '1' : '0';
 
-  // channel bar (planting or defusing)
+  // channel bar (planting or defusing), captioned for the one it is
   const ch = S.charge;
   if (ch && ch.progress > 0.02 && ch.progressNeed) {
     el.channel.style.opacity = '1';
     el['channel-fill'].style.width = `${Math.min(100, ch.progress / ch.progressNeed * 100)}%`;
+    const cap = S.phase === PHASE.PLANTED ? 'DEFUSING THE CHARGE' : 'PLANTING THE CHARGE';
+    if (el.channel._cap !== cap) { el.channel._cap = cap; el.channel.querySelector('.cap').textContent = cap; }
   } else {
     el.channel.style.opacity = '0';
   }

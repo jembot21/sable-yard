@@ -38,17 +38,41 @@ export const S = {
   smokes: [],          // live smoke clouds { x, z, r, t }
   noises: [],          // recent sounds { x, z, t, radius, team }
   feed: [],            // kill feed lines { text, t, colour }
+  radioT: 0,           // next time a bot may speak on the team radio
   banner: null,        // round/match banner { title, sub, t }
   winner: null,        // team that won the round or the match
   roundReason: '',
   mvpLine: '',
   rng: mulberry32(1),
-  shot: null,          // 'start' | 'play' | 'end' when staging screenshots
+  shot: null,          // 'start' | 'play' | 'buy' | 'planted' | 'end' when staging
   timeScale: 1,
 };
 
 export function otherTeam(team) {
   return team === TEAM.WARDENS ? TEAM.JACKALS : TEAM.WARDENS;
+}
+
+// Team radio: a bot's callout lands in the feed in its team colour, like a
+// kill line. Only the player's own team is heard, and a shared throttle
+// keeps the feed from becoming a wall of chatter; a priority call (the
+// plant, a defuse) cuts through the throttle but still resets it.
+export function radio(c, text, prio = false) {
+  if (!c || c.isPlayer || c.team !== S.playerTeam) return;
+  if (!prio && S.time < S.radioT) return;
+  S.radioT = S.time + 1.6;
+  S.feed.unshift({ text: `📻 ${c.name} — ${text}`, t: S.time, colour: c.team });
+  if (S.feed.length > 5) S.feed.pop();
+}
+
+// A plain-words name for a spot on the yard, for callouts: the two sites,
+// the warehouse, the side lanes, and everything between them is mid.
+export function zoneName(x, z) {
+  if (Math.hypot(x - 27, z + 20) < 10) return 'Site A';
+  if (Math.hypot(x - 27, z - 20) < 10) return 'Site B';
+  if (Math.abs(x) < 13 && Math.abs(z) < 11) return 'the warehouse';
+  if (z < -11) return 'north alley';
+  if (z > 11) return 'south rail';
+  return 'mid';
 }
 
 export function aliveOf(team) {

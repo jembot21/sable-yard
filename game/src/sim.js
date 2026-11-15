@@ -5,7 +5,7 @@
 // reads what is left behind.
 
 import * as THREE from 'three';
-import { S, PHASE, TEAM, makeCombatant, makeWeaponInstance, otherTeam, aliveOf } from './state.js';
+import { S, PHASE, TEAM, makeCombatant, makeWeaponInstance, otherTeam, aliveOf, radio, zoneName } from './state.js';
 import { WORLD } from './world.js';
 import { WEAPONS, updateWeapons, updateGrenades, buyItem } from './weapons.js';
 import { updatePlayer } from './player.js';
@@ -113,6 +113,9 @@ export function startRound() {
   S.phaseT = BUY_TIME;
   S.banner = { title: `ROUND ${S.round}`, sub: S.playerTeam === TEAM.JACKALS ? `Plant the charge at Site ${S.targetSite}` : `Defend the sites — the Jackals are coming for ${S.targetSite}`, t: 2.6 };
   for (const c of S.combatants) if (!c.isPlayer) botBuy(c);
+  // the round's plan goes out on the radio while the teams shop
+  const caller = S.combatants.find((x) => x.alive && !x.isPlayer && x.team === S.playerTeam);
+  if (caller) radio(caller, S.playerTeam === TEAM.JACKALS ? `Hit Site ${S.targetSite} — stick with the carrier` : `Hold the sites — intel says Site ${S.targetSite}`, true);
 }
 
 function endRound(winner, reason) {
@@ -225,6 +228,9 @@ function updateChannels(dt) {
         S.phase = PHASE.PLANTED;
         S.phaseT = CHARGE_TIME;
         S.banner = { title: 'CHARGE PLANTED', sub: `Site ${S.targetSite} — ${CHARGE_TIME} seconds to detonation`, t: 2.4 };
+        // the plant is called on both radios: settle in, or retake now
+        const caller2 = S.combatants.find((x) => x.alive && !x.isPlayer && x.team === S.playerTeam);
+        if (caller2) radio(caller2, S.playerTeam === TEAM.JACKALS ? `Charge is live at Site ${S.targetSite} — hold it` : `Charge planted at Site ${S.targetSite} — retake, now`, true);
         audio.plantBeep(true);
         fx.setChargeDevice(charge.pos, true);
       }
@@ -240,6 +246,13 @@ function updateChannels(dt) {
       if (c.isPlayer ? input.keys.has('KeyE') : c.channelKind === 'defuse') { defuser = c; break; }
     }
     if (defuser) {
+      // the first hands on the charge get a callout: his own if he is a
+      // bot, a covering teammate's if the player is defusing
+      if (charge.progress === 0 && !charge.calledDefuse) {
+        charge.calledDefuse = true;
+        const caller3 = defuser.isPlayer ? S.combatants.find((x) => x.alive && !x.isPlayer && x.team === defuser.team) : defuser;
+        if (caller3) radio(caller3, defuser.isPlayer ? 'Covering your defuse — go' : 'Defusing — cover me', true);
+      }
       charge.progress += dt;
       const need = defuser.kit ? DEFUSE_TIME_KIT : DEFUSE_TIME;
       charge.progressNeed = need;
