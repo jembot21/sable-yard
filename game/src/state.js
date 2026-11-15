@@ -29,6 +29,7 @@ export const S = {
   round: 1,
   winsNeeded: 7,       // first to 7 rounds takes the match (at most 13 played)
   score: { wardens: 0, jackals: 0 },
+  saveTeam: { wardens: false, jackals: false }, // per-round team save calls
   playerTeam: TEAM.WARDENS,
   targetSite: 'A',     // the site the Jackals are sent to this round
   combatants: [],      // the player and every bot, one shape for all
@@ -44,7 +45,7 @@ export const S = {
   roundReason: '',
   mvpLine: '',
   rng: mulberry32(1),
-  shot: null,          // 'start' | 'play' | 'buy' | 'planted' | 'end' when staging
+  shot: null,          // 'start' | 'play' | 'buy' | 'planted' | 'boom' | 'end' when staging
   timeScale: 1,
 };
 

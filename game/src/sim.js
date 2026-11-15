@@ -112,10 +112,17 @@ export function startRound() {
   S.phase = PHASE.BUY;
   S.phaseT = BUY_TIME;
   S.banner = { title: `ROUND ${S.round}`, sub: S.playerTeam === TEAM.JACKALS ? `Plant the charge at Site ${S.targetSite}` : `Defend the sites — the Jackals are coming for ${S.targetSite}`, t: 2.6 };
+  // a broke team saves together: from round 2, if the bots' average
+  // money cannot fund a real buy, nobody force-buys alone against it
+  for (const t of [TEAM.WARDENS, TEAM.JACKALS]) {
+    const bots = S.combatants.filter((x) => !x.isPlayer && x.team === t);
+    const avg = bots.reduce((s, x) => s + x.money, 0) / Math.max(1, bots.length);
+    S.saveTeam[t] = S.round >= 2 && avg < 1700;
+  }
   for (const c of S.combatants) if (!c.isPlayer) botBuy(c);
   // the round's plan goes out on the radio while the teams shop
   const caller = S.combatants.find((x) => x.alive && !x.isPlayer && x.team === S.playerTeam);
-  if (caller) radio(caller, S.playerTeam === TEAM.JACKALS ? `Hit Site ${S.targetSite} — stick with the carrier` : `Hold the sites — intel says Site ${S.targetSite}`, true);
+  if (caller) radio(caller, S.saveTeam[S.playerTeam] ? 'Low cash — save round, keep the money together' : S.playerTeam === TEAM.JACKALS ? `Hit Site ${S.targetSite} — stick with the carrier` : `Hold the sites — intel says Site ${S.targetSite}`, true);
 }
 
 function endRound(winner, reason) {

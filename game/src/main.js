@@ -15,7 +15,9 @@
 //     movement and map collision in player.js and world.js. The
 //     crosshair gap is drawn from the same numbers the ballistics use.
 //  3. Tactics — a breach charge to plant and defuse, a per-round
-//     economy with a buy menu, five weapons, three grenade kinds, and
+//     economy with a buy menu (the weapons' stats on their buttons,
+//     team save rounds when the money runs out), five weapons, three
+//     grenade kinds, and
 //     bots that throw theirs: frags at mid-range targets, flashes they
 //     look away from, smoke screens. Bot teams run a plan per round,
 //     hold angles, rotate on sight and sound, and call what they see
@@ -25,14 +27,15 @@
 //  5. Code — one job per module, the simulation in fixed steps apart
 //     from rendering, pooled effects, all match state in state.js's S.
 //
-// The ?shot=start|play|buy|planted|end scenes stage the screenshots
-// with the game's own code and a fixed seed: the menu, a mid-round
-// firefight, the buy phase, a defuse under cover, the match end.
+// The ?shot=start|play|buy|planted|boom|end scenes stage the
+// screenshots with the game's own code and a fixed seed: the menu, a
+// mid-round firefight, the buy phase, a defuse under cover, a frag
+// bursting over a warehouse duel, the match end.
 
 import * as THREE from 'three';
 import { S, PHASE, TEAM, mulberry32, radio } from './state.js';
 import { buildWorld, yawOf, dirFromAngles, rayHitDistance } from './world.js';
-import { initEffects, updateEffects, shakeValue, spawnSmokeFx } from './effects.js';
+import { initEffects, updateEffects, shakeValue, spawnSmokeFx, explosionFx } from './effects.js';
 import { buildSoldier, updateSoldier, buildViewmodels } from './models.js';
 import { bindInput, input } from './input.js';
 import { initHud, updateHud, hud } from './hud.js';
@@ -121,13 +124,15 @@ renderer.domElement.addEventListener('click', () => {
 // --- screenshot staging -----------------------------------------------------------
 
 let shotT = 0;
+const boom = { pos: null, t: 0 }; // the ?shot=boom still's bursting point
+
 function stageShot() {
   if (shot === 'start') return; // the menu over the posed yard is the shot
   for (const p of menuProps) p.mesh.visible = false;
   startMatch(TEAM.WARDENS);
   ensureMeshes();
   const p = S.player;
-  if (shot === 'play') {
+  if (shot === 'play' || shot === 'boom') {
     // &nades=1 arms every bot with a frag and a flash (a soak-test hook:
     // round-one money rarely buys grenades, so without it the staged
     // duel never exercises a bot throw)
@@ -152,6 +157,12 @@ function stageShot() {
     place(foes[2], 0.5, 4.6, -Math.PI / 2);
     place(foes[3], -14, -14, -Math.PI / 2);
     place(foes[4], 2, 14, Math.PI);
+    if (shot === 'boom') {
+      // the duel tightens around the spot where a frag keeps bursting:
+      // the point man steps into its edge, the player holds the door
+      place(foes[0], 2.6, -0.2, -Math.PI / 2);
+      boom.pos = new THREE.Vector3(4.6, 0, 0.3);
+    }
     foes[0].brain.enemy = p; foes[0].brain.spotReadyT = 0.55;
     foes[0].brain.skill.aimErr = 0.055;
     foes[1].brain.enemy = mates[0]; foes[1].brain.spotReadyT = 0;
@@ -328,9 +339,26 @@ function frame() {
     if (steps === 5) accumulator = 0;
   }
   shotT += dt;
-  if (shot === 'play') {
+  if (shot === 'play' || shot === 'boom') {
     // the staged player returns fire in bursts
     input.firing = (shotT > 0.6 && shotT < 1.4) || (shotT > 2.1 && shotT < 2.9);
+  }
+  if (shot === 'boom' && boom.pos) {
+    // keep a frag bursting over the duel: re-detonate the same spot
+    // every frame, so whichever frame is captured catches the blast at
+    // full size (the effect's own timers run on real time, which a
+    // screenshot's virtual clock outruns — a slower cycle would let
+    // the flash shrink back between detonations)
+    boom.t -= dt;
+    if (boom.t <= 0) { boom.t = 0; explosionFx(boom.pos); }
+    // and hold the staged duel together: the fighters keep their marks
+    // and nobody stays down, so the still never catches a corpse mid-fall
+    if (!boom.marks) boom.marks = S.combatants.filter((c) => !c.isPlayer).map((c) => ({ c, x: c.pos.x, z: c.pos.z }));
+    for (const m of boom.marks) {
+      if (!m.c.alive) { m.c.alive = true; m.c.hp = 60; }
+      m.c.pos.x = m.x; m.c.pos.z = m.z;
+    }
+    if (S.player && S.player.hp < 50) S.player.hp = 75;
   }
 
   updateEffects(dt);

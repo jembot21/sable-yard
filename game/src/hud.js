@@ -43,7 +43,8 @@ function buildBuyGrid() {
     const b = document.createElement('button');
     b.className = 'buy-item';
     b.dataset.item = id;
-    b.innerHTML = `<span class="buy-name">${def.name}</span><span class="buy-price">$${def.price}</span>`;
+    const stats = def.damage ? `<span class="buy-stats">DMG ${def.damage}${def.pellets ? `×${def.pellets}` : ''} · RPM ${def.rpm} · MAG ${def.mag}</span>` : '';
+    b.innerHTML = `<span class="buy-main"><span class="buy-name">${def.name}</span>${stats}</span><span class="buy-price">$${def.price}</span>`;
     b.addEventListener('click', () => {
       const p = S.player;
       if (!p) return;

@@ -108,6 +108,12 @@ export function assignPlans() {
 // loss with little money it saves — the economy is the same for everyone.
 export function botBuy(c) {
   const rng = S.rng;
+  // team save round: keep the money together — at most a grenade
+  if (S.saveTeam[c.team]) {
+    if (c.money >= 600 && rng() < 0.4) buyItem(c, 'frag');
+    if (c.slots.primary) switchSlot(c, 'primary');
+    return;
+  }
   const hasPrimary = !!c.slots.primary;
   if (!hasPrimary) {
     if (c.money >= 4350 && S.round >= 3 && rng() < 0.35) buyItem(c, 'longbow');
